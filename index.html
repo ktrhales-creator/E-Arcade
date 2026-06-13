@@ -34,20 +34,27 @@
 
             // Game constants
             const BRICK_COLS = 5;
-            const BRICK_ROWS = 4;
-            const BRICK_WIDTH = 70;
             const BRICK_HEIGHT = 15;
             const BRICK_PADDING = 5;
             const BRICK_OFFSET_TOP = 30;
 
             let paddleX = 150, ballX = 200, ballY = 330, speedX = 4, speedY = -4, score = 0, lives = 3;
             let bricks = [];
+            let level = 1;
+            let respawnDelay = 0;
+            let isRespawning = false;
 
-            // Initialize bricks
+            // Initialize bricks with level variations
             function initBricks() {
                 bricks = [];
+                const BRICK_ROWS = 3 + level; // More rows as level increases
+                const BRICK_WIDTH = level > 3 ? 60 : 70; // Smaller bricks on harder levels
+                
                 for (let row = 0; row < BRICK_ROWS; row++) {
                     for (let col = 0; col < BRICK_COLS; col++) {
+                        // Skip some bricks on higher levels for variety
+                        if (level > 2 && (row + col) % 3 === 0) continue;
+                        
                         bricks.push({
                             x: col * (BRICK_WIDTH + BRICK_PADDING) + 10,
                             y: row * (BRICK_HEIGHT + BRICK_PADDING) + BRICK_OFFSET_TOP,
@@ -78,12 +85,14 @@
 
                         // Check if all bricks are cleared
                         if (bricks.every(b => !b.active)) {
-                            alert("LEVEL COMPLETE! Score: " + score);
+                            level++;
+                            alert("LEVEL " + level + "! Score: " + score);
                             initBricks();
                             ballX = 200;
                             ballY = 330;
-                            speedX = 4;
-                            speedY = -4;
+                            speedX = 4 * (1 + level * 0.1); // Increase base speed per level
+                            speedY = -4 * (1 + level * 0.1);
+                            isRespawning = false;
                         }
                         return;
                     }
@@ -92,8 +101,23 @@
 
             function update() {
                 ctx.clearRect(0, 0, 400, 400);
-                ballX += speedX;
-                ballY += speedY;
+
+                // Handle respawn delay
+                if (isRespawning) {
+                    respawnDelay--;
+                    if (respawnDelay <= 0) {
+                        isRespawning = false;
+                    }
+                }
+
+                if (!isRespawning) {
+                    ballX += speedX;
+                    ballY += speedY;
+                } else {
+                    // Ball falls slowly during respawn
+                    ballY += 1;
+                    ballX = 200; // Keep it centered above paddle
+                }
 
                 // Wall collision
                 if (ballX < 10 || ballX > 390) speedX = -speedX;
@@ -103,19 +127,23 @@
                 if (ballY > 350 && ballY < 370 && ballX > paddleX && ballX < paddleX + 100) {
                     speedY = -speedY;
                     score++;
-                    if (score % 5 === 0) { speedX *= 1.1; speedY *= 1.1; }
+                    if (score % 5 === 0) { speedX *= 1.05; speedY *= 1.05; }
                 }
 
                 // Brick collision
-                checkBrickCollision();
+                if (!isRespawning) {
+                    checkBrickCollision();
+                }
 
                 // Fall off screen
                 if (ballY > 400) {
                     lives--;
                     ballX = 200;
-                    ballY = 330;
+                    ballY = 50;
+                    respawnDelay = 120; // 2 seconds at 60fps
+                    isRespawning = true;
                     if (lives === 0) {
-                        alert("GAME OVER! Score: " + score);
+                        alert("GAME OVER!\nFinal Score: " + score + "\nLevel Reached: " + level);
                         location.reload();
                     }
                 }
@@ -146,6 +174,16 @@
                 ctx.font = "20px Arial";
                 ctx.fillText("Score: " + score, 10, 30);
                 ctx.fillText("Lives: " + lives, 300, 30);
+                ctx.fillText("Level: " + level, 175, 30);
+
+                // Draw respawn message
+                if (isRespawning) {
+                    ctx.fillStyle = "rgba(0, 0, 0, 0.5)";
+                    ctx.fillRect(0, 0, 400, 400);
+                    ctx.fillStyle = "#ff00ff";
+                    ctx.font = "30px Arial";
+                    ctx.fillText("GET READY!", 120, 200);
+                }
 
                 requestAnimationFrame(update);
             }
