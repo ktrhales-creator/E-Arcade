@@ -1,37 +1,355 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>E-Arcade Portal</title>
+    <title>E-ARCADE PORTAL</title>
     <style>
-        body { background: #111; color: #ff00ff; text-align: center; font-family: monospace; }
-        canvas { border: 4px solid #00ffff; background: #000; cursor: none; box-shadow: 0 0 20px #00ffff; }
-        button { padding: 15px 30px; font-size: 20px; cursor: pointer; background: #ff00ff; color: white; border: none; margin: 5px; border-radius: 5px; box-shadow: 0 0 10px #ff00ff; }
-        button:hover { box-shadow: 0 0 20px #ff00ff; }
-        #soundToggle { background: #00ff00; box-shadow: 0 0 10px #00ff00; }
-        #soundToggle:hover { box-shadow: 0 0 20px #00ff00; }
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: #0a0e27;
+            color: #00ff88;
+            font-family: 'Courier New', monospace;
+            overflow: hidden;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+        }
+
+        /* Scanline effect */
+        body::before {
+            content: '';
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: repeating-linear-gradient(
+                0deg,
+                rgba(0, 0, 0, 0.15),
+                rgba(0, 0, 0, 0.15) 1px,
+                transparent 1px,
+                transparent 2px
+            );
+            pointer-events: none;
+            z-index: 100;
+        }
+
+        /* Animated background grid */
+        .grid-background {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-image: 
+                linear-gradient(0deg, transparent 24%, rgba(255, 0, 255, 0.1) 25%, rgba(255, 0, 255, 0.1) 26%, transparent 27%, transparent 74%, rgba(255, 0, 255, 0.1) 75%, rgba(255, 0, 255, 0.1) 76%, transparent 77%, transparent),
+                linear-gradient(90deg, transparent 24%, rgba(0, 255, 255, 0.1) 25%, rgba(0, 255, 255, 0.1) 26%, transparent 27%, transparent 74%, rgba(0, 255, 255, 0.1) 75%, rgba(0, 255, 255, 0.1) 76%, transparent 77%, transparent);
+            background-size: 50px 50px;
+            animation: gridShift 20s linear infinite;
+            z-index: 1;
+        }
+
+        @keyframes gridShift {
+            0% { background-position: 0 0; }
+            100% { background-position: 50px 50px; }
+        }
+
+        .container {
+            position: relative;
+            z-index: 10;
+            text-align: center;
+        }
+
+        /* Arcade cabinet frame */
+        .arcade-cabinet {
+            background: linear-gradient(135deg, #1a1f3a 0%, #0d0f1f 100%);
+            border: 15px solid #2a2a2a;
+            border-radius: 20px;
+            padding: 40px;
+            box-shadow: 
+                0 0 50px rgba(255, 0, 255, 0.6),
+                0 0 100px rgba(0, 255, 255, 0.4),
+                inset 0 0 30px rgba(255, 0, 255, 0.1),
+                0 20px 60px rgba(0, 0, 0, 0.8);
+            max-width: 600px;
+            animation: cabinetGlow 3s ease-in-out infinite;
+        }
+
+        @keyframes cabinetGlow {
+            0%, 100% { box-shadow: 
+                0 0 50px rgba(255, 0, 255, 0.6),
+                0 0 100px rgba(0, 255, 255, 0.4),
+                inset 0 0 30px rgba(255, 0, 255, 0.1),
+                0 20px 60px rgba(0, 0, 0, 0.8);
+            }
+            50% { box-shadow: 
+                0 0 80px rgba(255, 0, 255, 0.8),
+                0 0 150px rgba(0, 255, 255, 0.6),
+                inset 0 0 40px rgba(255, 0, 255, 0.2),
+                0 20px 60px rgba(0, 0, 0, 0.8);
+            }
+        }
+
+        .screen {
+            background: #000;
+            border: 3px solid #00ff88;
+            border-radius: 10px;
+            padding: 30px;
+            margin-bottom: 30px;
+            box-shadow: 
+                0 0 30px rgba(0, 255, 136, 0.5),
+                inset 0 0 20px rgba(0, 255, 136, 0.1);
+        }
+
+        .title {
+            font-size: 48px;
+            font-weight: bold;
+            margin-bottom: 10px;
+            letter-spacing: 3px;
+            animation: titleGlow 2s ease-in-out infinite;
+            text-shadow: 
+                0 0 10px rgba(255, 0, 255, 0.8),
+                0 0 20px rgba(0, 255, 255, 0.6);
+            color: #ff00ff;
+        }
+
+        @keyframes titleGlow {
+            0%, 100% { 
+                text-shadow: 
+                    0 0 10px rgba(255, 0, 255, 0.8),
+                    0 0 20px rgba(0, 255, 255, 0.6);
+            }
+            50% { 
+                text-shadow: 
+                    0 0 20px rgba(255, 0, 255, 1),
+                    0 0 40px rgba(0, 255, 255, 0.8),
+                    0 0 60px rgba(255, 255, 0, 0.6);
+            }
+        }
+
+        .subtitle {
+            font-size: 16px;
+            color: #00ffff;
+            margin-bottom: 5px;
+            letter-spacing: 2px;
+            animation: pulse 1.5s ease-in-out infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 0.7; }
+            50% { opacity: 1; }
+        }
+
+        .status-text {
+            font-size: 12px;
+            color: #00ff88;
+            margin-top: 10px;
+            animation: blink 1s step-start infinite;
+        }
+
+        @keyframes blink {
+            0%, 49% { opacity: 1; }
+            50%, 100% { opacity: 0.3; }
+        }
+
+        .button-group {
+            display: flex;
+            gap: 15px;
+            justify-content: center;
+            flex-wrap: wrap;
+        }
+
+        button {
+            padding: 15px 35px;
+            font-size: 16px;
+            font-family: 'Courier New', monospace;
+            font-weight: bold;
+            cursor: pointer;
+            border: 3px solid #ff00ff;
+            background: linear-gradient(135deg, rgba(255, 0, 255, 0.2), rgba(0, 255, 255, 0.2));
+            color: #ff00ff;
+            letter-spacing: 2px;
+            transition: all 0.3s ease;
+            box-shadow: 
+                0 0 20px rgba(255, 0, 255, 0.5),
+                inset 0 0 10px rgba(255, 0, 255, 0.1);
+            border-radius: 5px;
+            text-transform: uppercase;
+            position: relative;
+            overflow: hidden;
+        }
+
+        button::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -100%;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.3), transparent);
+            transition: left 0.5s ease;
+        }
+
+        button:hover {
+            background: linear-gradient(135deg, rgba(255, 0, 255, 0.5), rgba(0, 255, 255, 0.5));
+            box-shadow: 
+                0 0 40px rgba(255, 0, 255, 0.8),
+                0 0 20px rgba(0, 255, 255, 0.6),
+                inset 0 0 20px rgba(255, 0, 255, 0.3);
+            transform: scale(1.05);
+            border-color: #00ffff;
+            color: #00ffff;
+            text-shadow: 0 0 10px rgba(0, 255, 255, 0.8);
+        }
+
+        button:hover::before {
+            left: 100%;
+        }
+
+        button:active {
+            transform: scale(0.98);
+            box-shadow: 
+                0 0 20px rgba(255, 0, 255, 0.5),
+                inset 0 0 30px rgba(255, 0, 255, 0.3);
+        }
+
+        #soundToggle {
+            background: linear-gradient(135deg, rgba(0, 255, 136, 0.2), rgba(0, 255, 200, 0.2));
+            border-color: #00ff88;
+            color: #00ff88;
+        }
+
+        #soundToggle:hover {
+            background: linear-gradient(135deg, rgba(0, 255, 136, 0.5), rgba(0, 255, 200, 0.5));
+            border-color: #00ffff;
+            color: #00ffff;
+            box-shadow: 
+                0 0 40px rgba(0, 255, 136, 0.8),
+                0 0 20px rgba(0, 255, 200, 0.6),
+                inset 0 0 20px rgba(0, 255, 136, 0.3);
+        }
+
+        #gameContainer {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 20;
+        }
+
+        canvas {
+            display: block;
+            margin: 0 auto;
+            border: 5px solid #ff00ff;
+            box-shadow: 0 0 30px rgba(255, 0, 255, 0.7);
+            background: #000;
+        }
+
+        .game-ui {
+            position: absolute;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            gap: 10px;
+            z-index: 21;
+        }
+
+        .marquee {
+            font-size: 14px;
+            color: #ffff00;
+            margin-top: 15px;
+            letter-spacing: 1px;
+            animation: marqueeScroll 4s linear infinite;
+        }
+
+        @keyframes marqueeScroll {
+            0% { transform: translateX(100%); }
+            100% { transform: translateX(-100%); }
+        }
+
+        /* Particle effects */
+        .particle {
+            position: fixed;
+            pointer-events: none;
+            z-index: 5;
+        }
+
+        .retro-bezel {
+            background: linear-gradient(145deg, #3a3a3a, #1a1a1a);
+            border: 8px outset #4a4a4a;
+            border-right-color: #0a0a0a;
+            border-bottom-color: #0a0a0a;
+        }
     </style>
 </head>
 <body>
+    <div class="grid-background"></div>
 
-    <div id="menu">
-        <h1>E-ARCADE PORTAL</h1>
-        <button onclick="launchGame()">START E-ARCADE</button>
-        <br>
-        <button id="soundToggle" onclick="toggleSound()">🔊 SOUND ON</button>
+    <div id="menu" class="container">
+        <div class="arcade-cabinet retro-bezel">
+            <div class="screen">
+                <div class="title">E·ARCADE</div>
+                <div class="subtitle">▼ PORTAL ▼</div>
+                <div class="status-text">[ READY TO START ]</div>
+                <div class="marquee">★ INSERT COIN TO CONTINUE ★</div>
+            </div>
+
+            <div class="button-group">
+                <button onclick="launchGame()">▶ START GAME</button>
+                <button id="soundToggle" onclick="toggleSound()">🔊 SOUND ON</button>
+            </div>
+        </div>
     </div>
 
     <div id="gameContainer" style="display: none;">
         <canvas id="gameCanvas" width="400" height="400"></canvas>
-        <br>
-        <button id="soundToggleInGame" onclick="toggleSound()">🔊 SOUND ON</button>
-        <button onclick="location.reload()">QUIT TO MENU</button>
+        <div class="game-ui">
+            <button id="soundToggleInGame" onclick="toggleSound()">🔊</button>
+            <button onclick="location.reload()">⏹ QUIT</button>
+        </div>
     </div>
 
     <script>
         let soundEnabled = true;
         const audioContext = new (window.AudioContext || window.webkitAudioContext)();
 
-        // Sound effect generator
+        // Particle generator for background
+        function createParticle() {
+            const particle = document.createElement('div');
+            particle.className = 'particle';
+            particle.style.left = Math.random() * window.innerWidth + 'px';
+            particle.style.top = '-10px';
+            particle.style.width = '2px';
+            particle.style.height = '2px';
+            particle.style.background = Math.random() > 0.5 ? '#ff00ff' : '#00ffff';
+            particle.style.boxShadow = '0 0 10px currentColor';
+            
+            document.body.appendChild(particle);
+            
+            let y = -10;
+            const speed = Math.random() * 1 + 0.5;
+            const interval = setInterval(() => {
+                y += speed;
+                particle.style.top = y + 'px';
+                particle.style.opacity = 1 - (y / window.innerHeight);
+                
+                if (y > window.innerHeight) {
+                    clearInterval(interval);
+                    particle.remove();
+                }
+            }, 30);
+        }
+
+        // Create particles periodically
+        setInterval(createParticle, 300);
+
         const sounds = {
             brickHit: () => playTone(600, 100, 0.3),
             paddleHit: () => playTone(800, 100, 0.3),
@@ -84,11 +402,11 @@
 
         function toggleSound() {
             soundEnabled = !soundEnabled;
-            const btn = document.getElementById('soundToggle') || document.getElementById('soundToggleInGame');
-            btn.textContent = soundEnabled ? '🔊 SOUND ON' : '🔇 SOUND OFF';
-            if (document.getElementById('soundToggleInGame')) {
-                document.getElementById('soundToggleInGame').textContent = soundEnabled ? '🔊 SOUND ON' : '🔇 SOUND OFF';
-            }
+            const btn = document.getElementById('soundToggle');
+            const btnInGame = document.getElementById('soundToggleInGame');
+            const text = soundEnabled ? '🔊' : '🔇';
+            if (btn) btn.textContent = text + ' SOUND ' + (soundEnabled ? 'ON' : 'OFF');
+            if (btnInGame) btnInGame.textContent = text;
         }
 
         function launchGame() {
@@ -101,7 +419,6 @@
             const canvas = document.getElementById("gameCanvas");
             const ctx = canvas.getContext("2d");
 
-            // Game constants
             const BRICK_COLS = 5;
             const BRICK_HEIGHT = 15;
             const BRICK_PADDING = 5;
@@ -115,7 +432,6 @@
             let particles = [];
             let flashIntensity = 0;
 
-            // Particle system
             class Particle {
                 constructor(x, y, vx, vy, color) {
                     this.x = x;
@@ -129,7 +445,7 @@
                 update() {
                     this.x += this.vx;
                     this.y += this.vy;
-                    this.vy += 0.2; // gravity
+                    this.vy += 0.2;
                     this.life--;
                 }
 
@@ -143,7 +459,6 @@
                 }
             }
 
-            // Initialize bricks with level variations
             function initBricks() {
                 bricks = [];
                 const BRICK_ROWS = 3 + level;
@@ -194,18 +509,14 @@
                     if (ballX > brick.x && ballX < brick.x + brick.width &&
                         ballY > brick.y && ballY < brick.y + brick.height) {
                         brick.active = false;
-                        
-                        // Simple bounce
                         speedY = -speedY;
                         score += 10;
                         sounds.brickHit();
                         
-                        // Create particles
                         const colors = ["#00ff00", "#00ffff", "#ff00ff"];
                         createParticles(ballX, ballY, colors[brick.row % 3], 12);
                         flashIntensity = 0.3;
 
-                        // Check if all bricks are cleared
                         if (bricks.every(b => !b.active)) {
                             level++;
                             sounds.levelComplete();
@@ -225,7 +536,6 @@
             function update() {
                 ctx.clearRect(0, 0, 400, 400);
 
-                // Handle respawn delay
                 if (isRespawning) {
                     respawnDelay--;
                     if (respawnDelay <= 0) {
@@ -241,17 +551,13 @@
                     ballX = 200;
                 }
 
-                // Wall collision
                 if (ballX < 10 || ballX > 390) speedX = -speedX;
                 if (ballY < 10) speedY = -speedY;
 
-                // Paddle collision with angle physics
                 if (ballY > 350 && ballY < 370 && ballX > paddleX && ballX < paddleX + 100) {
                     speedY = -Math.abs(speedY);
-                    
-                    // Angle based on where ball hits paddle
-                    const hitPos = (ballX - paddleX) / 100; // 0 to 1
-                    const angle = (hitPos - 0.5) * 1; // Range: -0.5 to 0.5
+                    const hitPos = (ballX - paddleX) / 100;
+                    const angle = (hitPos - 0.5) * 1;
                     speedX = angle * 8;
                     
                     score++;
@@ -262,12 +568,10 @@
                     if (score % 5 === 0) { speedX *= 1.05; speedY *= 1.05; }
                 }
 
-                // Brick collision
                 if (!isRespawning) {
                     checkBrickCollision();
                 }
 
-                // Fall off screen
                 if (ballY > 400) {
                     lives--;
                     sounds.lifeLost();
@@ -282,29 +586,24 @@
                     }
                 }
 
-                // Update particles
                 particles = particles.filter(p => p.life > 0);
                 particles.forEach(p => p.update());
 
-                // Draw flash
                 if (flashIntensity > 0) {
                     ctx.fillStyle = `rgba(255, 0, 255, ${flashIntensity * 0.3})`;
                     ctx.fillRect(0, 0, 400, 400);
                     flashIntensity -= 0.05;
                 }
 
-                // Draw bricks with gradients
                 for (let brick of bricks) {
                     if (brick.active) {
                         const gradient = ctx.createLinearGradient(brick.x, brick.y, brick.x, brick.y + brick.height);
-                        
                         const colors = [
                             ["#00ff00", "#00cc00"],
                             ["#00ffff", "#00cccc"],
                             ["#ff00ff", "#cc00cc"]
                         ];
                         const colorPair = colors[brick.row % 3];
-                        
                         gradient.addColorStop(0, colorPair[0]);
                         gradient.addColorStop(1, colorPair[1]);
                         
@@ -317,7 +616,6 @@
                     }
                 }
 
-                // Draw paddle with gradient
                 const paddleGradient = ctx.createLinearGradient(paddleX, 360, paddleX, 380);
                 paddleGradient.addColorStop(0, "#00ffff");
                 paddleGradient.addColorStop(1, "#0088ff");
@@ -331,29 +629,24 @@
                 ctx.lineWidth = 2;
                 ctx.strokeRect(paddleX, 360, 100, 20);
 
-                // Draw ball with glow
                 ctx.shadowColor = "#ff00ff";
                 ctx.shadowBlur = 20;
                 
-                // Outer glow
                 ctx.fillStyle = "rgba(255, 0, 255, 0.2)";
                 ctx.beginPath();
                 ctx.arc(ballX, ballY, 20, 0, Math.PI * 2);
                 ctx.fill();
                 
-                // Middle glow
                 ctx.fillStyle = "rgba(255, 0, 255, 0.4)";
                 ctx.beginPath();
                 ctx.arc(ballX, ballY, 15, 0, Math.PI * 2);
                 ctx.fill();
                 
-                // Core ball
                 ctx.fillStyle = "#ff00ff";
                 ctx.beginPath();
                 ctx.arc(ballX, ballY, 10, 0, Math.PI * 2);
                 ctx.fill();
                 
-                // Highlight
                 ctx.fillStyle = "#ffffff";
                 ctx.beginPath();
                 ctx.arc(ballX - 3, ballY - 3, 3, 0, Math.PI * 2);
@@ -362,10 +655,8 @@
                 ctx.shadowColor = "transparent";
                 ctx.shadowBlur = 0;
 
-                // Draw particles
                 particles.forEach(p => p.draw(ctx));
 
-                // Draw UI
                 ctx.fillStyle = "#ff00ff";
                 ctx.font = "bold 20px Arial";
                 ctx.shadowColor = "#ff00ff";
@@ -375,7 +666,6 @@
                 ctx.fillText("Level: " + level, 175, 30);
                 ctx.shadowColor = "transparent";
 
-                // Draw respawn message
                 if (isRespawning) {
                     ctx.fillStyle = "rgba(0, 0, 0, 0.5)";
                     ctx.fillRect(0, 0, 400, 400);
