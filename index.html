@@ -261,19 +261,6 @@
             z-index: 21;
         }
 
-        .marquee {
-            font-size: 14px;
-            color: #ffff00;
-            margin-top: 15px;
-            letter-spacing: 1px;
-            animation: marqueeScroll 4s linear infinite;
-        }
-
-        @keyframes marqueeScroll {
-            0% { transform: translateX(100%); }
-            100% { transform: translateX(-100%); }
-        }
-
         .particle {
             position: fixed;
             pointer-events: none;
@@ -297,7 +284,6 @@
                 <div class="title">CYBER SHATTER</div>
                 <div class="subtitle">▼ PORTAL ▼</div>
                 <div class="status-text">[ READY TO START ]</div>
-                <div class="marquee">★ INSERT COIN TO CONTINUE ★</div>
             </div>
 
             <div class="button-group">
@@ -353,7 +339,8 @@
             levelComplete: () => playMelody([800, 1000, 1200], 150),
             lifeLost: () => playTone(300, 300, 0.5),
             gameOver: () => playMelody([600, 400, 200], 200),
-            powerUp: () => playMelody([1000, 1200, 1000], 100)
+            powerUp: () => playMelody([1000, 1200, 1000], 100),
+            levelStart: () => playMelody([600, 800, 1000], 100)
         };
 
         function playTone(freq, duration, volume) {
@@ -417,24 +404,22 @@
             const canvas = document.getElementById("gameCanvas");
             const ctx = canvas.getContext("2d");
 
-            // Game constants
             const BRICK_COLS = 5;
             const BRICK_HEIGHT = 15;
             const BRICK_PADDING = 5;
             const BRICK_OFFSET_TOP = 30;
 
-            // Game state
             let paddleX = 150;
             let ballX = 200;
             let ballY = 330;
-            let speedX = 4;
-            let speedY = -4;
+            let speedX = 0;
+            let speedY = 0;
             let score = 0;
             let lives = 3;
             let bricks = [];
             let level = 1;
-            let respawnDelay = 0;
-            let isRespawning = false;
+            let gameState = 'countdown';
+            let stateTimer = 120;
             let particles = [];
             let flashIntensity = 0;
             let powerUps = [];
@@ -442,28 +427,30 @@
             let slowMoActive = 0;
             let shieldActive = false;
             let screenShake = 0;
+            let activePowerups = {};
+            let baseSpeed = 3;
 
-            // Particle system
             class Particle {
-                constructor(x, y, vx, vy, color) {
+                constructor(x, y, vx, vy, color, life = 30) {
                     this.x = x;
                     this.y = y;
                     this.vx = vx;
                     this.vy = vy;
                     this.color = color;
-                    this.life = 30;
+                    this.life = life;
+                    this.maxLife = life;
                 }
 
                 update() {
                     this.x += this.vx;
                     this.y += this.vy;
-                    this.vy += 0.2;
+                    this.vy += 0.15;
                     this.life--;
                 }
 
                 draw(ctx) {
                     ctx.fillStyle = this.color;
-                    ctx.globalAlpha = this.life / 30;
+                    ctx.globalAlpha = this.life / this.maxLife;
                     ctx.beginPath();
                     ctx.arc(this.x, this.y, 3, 0, Math.PI * 2);
                     ctx.fill();
@@ -471,14 +458,13 @@
                 }
             }
 
-            // Power-up system
             class PowerUp {
                 constructor(x, y, type) {
                     this.x = x;
                     this.y = y;
                     this.type = type;
-                    this.width = 15;
-                    this.height = 15;
+                    this.width = 18;
+                    this.height = 18;
                     this.vy = 2;
                     this.active = true;
                     this.pulse = 0;
@@ -486,11 +472,19 @@
 
                 update() {
                     this.y += this.vy;
-                    this.pulse += 0.1;
+                    this.pulse += 0.08;
                     if (this.y > 400) this.active = false;
                 }
 
                 draw(ctx) {
+                    const icons = {
+                        'expand': '◆',
+                        'multiBall': '●●',
+                        'slowMo': '⌛',
+                        'shield': '⊕',
+                        'speedBoost': '⚡'
+                    };
+
                     const colors = {
                         'expand': '#ffff00',
                         'multiBall': '#ff0088',
@@ -499,24 +493,30 @@
                         'speedBoost': '#ff6600'
                     };
 
-                    ctx.fillStyle = colors[this.type] || '#ffffff';
-                    const size = this.width + Math.sin(this.pulse) * 2;
+                    const color = colors[this.type];
+                    const size = 18 + Math.sin(this.pulse) * 4;
+
+                    ctx.fillStyle = color;
+                    ctx.shadowColor = color;
+                    ctx.shadowBlur = 15;
+                    ctx.globalAlpha = 0.3;
+                    ctx.beginPath();
+                    ctx.arc(this.x, this.y, size/2 + 3, 0, Math.PI * 2);
+                    ctx.fill();
+                    ctx.globalAlpha = 1;
+
                     ctx.fillRect(this.x - size/2, this.y - size/2, size, size);
-                    
-                    ctx.shadowColor = colors[this.type];
-                    ctx.shadowBlur = 10;
                     ctx.strokeStyle = '#ffffff';
                     ctx.lineWidth = 2;
                     ctx.strokeRect(this.x - size/2, this.y - size/2, size, size);
                     ctx.shadowColor = 'transparent';
                 }
 
-                checkCollision(paddleX) {
-                    return this.y > 350 && this.y < 380 && this.x > paddleX && this.x < paddleX + 100;
+                checkCollision(paddleX, paddleWidth) {
+                    return this.y > 350 && this.y < 380 && this.x > paddleX && this.x < paddleX + paddleWidth;
                 }
             }
 
-            // Brick types
             class Brick {
                 constructor(x, y, width, height, row, type = 'normal') {
                     this.x = x;
@@ -556,10 +556,9 @@
                     ctx.lineWidth = 1;
                     ctx.strokeRect(this.x, this.y, this.width, this.height);
 
-                    // Draw hit count for ice bricks
                     if (this.type === 'ice' && this.hits > 0) {
                         ctx.fillStyle = '#ffffff';
-                        ctx.font = '10px Arial';
+                        ctx.font = 'bold 10px Arial';
                         ctx.textAlign = 'center';
                         ctx.fillText(this.hits, this.x + this.width/2, this.y + this.height/2 + 3);
                     }
@@ -568,7 +567,7 @@
 
             function initBricks() {
                 bricks = [];
-                const BRICK_ROWS = 3 + level;
+                const BRICK_ROWS = 3 + Math.min(level, 2);
                 const BRICK_WIDTH = level > 3 ? 60 : 70;
                 
                 for (let row = 0; row < BRICK_ROWS; row++) {
@@ -577,9 +576,9 @@
                         
                         let type = 'normal';
                         const rand = Math.random();
-                        if (rand < 0.15) type = 'ice';
-                        if (rand < 0.05) type = 'bomb';
-                        if (rand < 0.03) type = 'mystery';
+                        if (rand < 0.12) type = 'ice';
+                        if (rand < 0.04) type = 'bomb';
+                        if (rand < 0.02) type = 'mystery';
                         
                         bricks.push(new Brick(
                             col * (BRICK_WIDTH + BRICK_PADDING) + 10,
@@ -593,6 +592,22 @@
                 }
             }
 
+            function resetBall() {
+                ballX = 200;
+                ballY = 330;
+                speedX = 0;
+                speedY = 0;
+                balls = [];
+            }
+
+            function startNewLevel() {
+                resetBall();
+                initBricks();
+                gameState = 'countdown';
+                stateTimer = 120;
+                sounds.levelStart();
+            }
+
             initBricks();
 
             canvas.addEventListener("mousemove", (e) => {
@@ -601,15 +616,16 @@
                 paddleX = Math.max(0, Math.min(paddleX, 300));
             });
 
-            function createParticles(x, y, color, count = 8) {
+            function createParticles(x, y, color, count = 8, spread = 2) {
                 for (let i = 0; i < count; i++) {
-                    const angle = (Math.PI * 2 * i) / count;
-                    const speed = 2 + Math.random() * 3;
+                    const angle = (Math.PI * 2 * i) / count + (Math.random() - 0.5) * spread;
+                    const speed = 2 + Math.random() * 4;
                     particles.push(new Particle(
                         x, y,
                         Math.cos(angle) * speed,
                         Math.sin(angle) * speed,
-                        color
+                        color,
+                        40
                     ));
                 }
             }
@@ -622,13 +638,16 @@
 
             function activatePowerUp(type) {
                 sounds.powerUp();
+                
                 switch(type) {
                     case 'expand':
-                        // Paddle expand handled in draw
+                        activePowerups['expand'] = 300;
                         break;
                     case 'multiBall':
-                        balls.push({x: ballX, y: ballY, vx: speedX * -1.2, vy: speedY});
-                        balls.push({x: ballX, y: ballY, vx: speedX * 1.2, vy: speedY});
+                        if (balls.length < 4) {
+                            balls.push({x: ballX, y: ballY, vx: speedX * -1.3, vy: speedY * 0.9});
+                            balls.push({x: ballX, y: ballY, vx: speedX * 1.3, vy: speedY * 0.9});
+                        }
                         break;
                     case 'slowMo':
                         slowMoActive = 300;
@@ -637,8 +656,7 @@
                         shieldActive = true;
                         break;
                     case 'speedBoost':
-                        speedX *= 1.5;
-                        speedY *= 1.5;
+                        activePowerups['speedBoost'] = 200;
                         break;
                 }
             }
@@ -663,41 +681,34 @@
                                 'normal': ["#00ff00", "#00ffff", "#ff00ff"][brick.row % 3]
                             };
                             
-                            createParticles(bx, by, colors[brick.type] || '#00ff00', 12);
+                            createParticles(bx, by, colors[brick.type] || '#00ff00', 15, 1.5);
                             
                             if (brick.type === 'bomb') {
                                 for (let otherBrick of bricks) {
                                     if (otherBrick.active && 
-                                        Math.abs(otherBrick.x - brick.x) < 80 &&
-                                        Math.abs(otherBrick.y - brick.y) < 60) {
+                                        Math.abs(otherBrick.x - brick.x) < 85 &&
+                                        Math.abs(otherBrick.y - brick.y) < 65) {
                                         otherBrick.active = false;
                                         score += 10;
-                                        createParticles(otherBrick.x + otherBrick.width/2, otherBrick.y + otherBrick.height/2, '#ff3333', 8);
+                                        createParticles(otherBrick.x + otherBrick.width/2, otherBrick.y + otherBrick.height/2, '#ff3333', 10, 1);
                                     }
                                 }
                             }
                             
-                            if (Math.random() < 0.3) spawnPowerUp(brick.x + brick.width/2, brick.y + brick.height/2);
+                            if (Math.random() < 0.25) spawnPowerUp(brick.x + brick.width/2, brick.y + brick.height/2);
+                        } else {
+                            createParticles(bx, by, colors[brick.type], 6, 1);
                         }
 
                         bsy = -bsy;
                         sounds.brickHit();
                         flashIntensity = 0.3;
-                        screenShake = 5;
+                        screenShake = 8;
 
                         if (bricks.every(b => !b.active)) {
                             level++;
                             sounds.levelComplete();
-                            alert("LEVEL " + level + "! Score: " + score);
-                            initBricks();
-                            ballX = 200;
-                            ballY = 330;
-                            speedX = 4 * (1 + level * 0.1);
-                            speedY = -4 * (1 + level * 0.1);
-                            isRespawning = false;
-                            balls = [];
-                            slowMoActive = 0;
-                            shieldActive = false;
+                            startNewLevel();
                         }
                         return bsy;
                     }
@@ -706,98 +717,136 @@
             }
 
             function update() {
-                // Apply slow-mo
                 let dt = slowMoActive > 0 ? 0.5 : 1;
                 if (slowMoActive > 0) slowMoActive--;
 
                 ctx.clearRect(0, 0, 400, 400);
 
-                if (isRespawning) {
-                    respawnDelay--;
-                    if (respawnDelay <= 0) {
-                        isRespawning = false;
+                // Countdown state
+                if (gameState === 'countdown') {
+                    stateTimer--;
+                    const countdownNum = Math.ceil(stateTimer / 40);
+                    
+                    if (stateTimer <= 0) {
+                        gameState = 'playing';
+                        speedX = baseSpeed;
+                        speedY = -baseSpeed;
+                    }
+                    
+                    ctx.fillStyle = 'rgba(0, 0, 0, 0.2)';
+                    ctx.fillRect(0, 0, 400, 400);
+                    
+                    if (countdownNum > 0 && countdownNum <= 3) {
+                        ctx.fillStyle = '#ff00ff';
+                        ctx.font = 'bold 80px Arial';
+                        ctx.textAlign = 'center';
+                        ctx.shadowColor = '#ff00ff';
+                        ctx.shadowBlur = 30;
+                        ctx.globalAlpha = Math.sin((stateTimer % 40) / 40 * Math.PI) * 0.5 + 0.5;
+                        ctx.fillText(countdownNum, 200, 220);
+                        ctx.shadowColor = 'transparent';
+                        ctx.globalAlpha = 1;
                     }
                 }
 
-                // Update main ball
-                if (!isRespawning) {
+                // Playing state
+                if (gameState === 'playing') {
                     ballX += speedX * dt;
                     ballY += speedY * dt;
-                } else {
-                    ballY += 1;
-                    ballX = 200;
-                }
 
-                // Wall collision
-                if (ballX < 10 || ballX > 390) speedX = -speedX;
-                if (ballY < 10) speedY = -speedY;
+                    // Wall collisions
+                    if (ballX < 10 || ballX > 390) {
+                        speedX = -speedX;
+                        ballX = Math.max(10, Math.min(390, ballX));
+                    }
+                    if (ballY < 10) {
+                        speedY = -speedY;
+                        ballY = Math.max(10, ballY);
+                    }
 
-                // Paddle collision
-                const paddleWidth = shieldActive ? 120 : 100;
-                if (ballY > 350 && ballY < 370 && ballX > paddleX && ballX < paddleX + paddleWidth) {
-                    speedY = -Math.abs(speedY);
-                    const hitPos = (ballX - paddleX) / paddleWidth;
-                    const angle = (hitPos - 0.5) * 1;
-                    speedX = angle * 8;
-                    
-                    score++;
-                    sounds.paddleHit();
-                    createParticles(ballX, ballY, "#00ffff", 6);
-                    flashIntensity = 0.2;
-                    
-                    if (score % 5 === 0) { speedX *= 1.05; speedY *= 1.05; }
-                }
+                    // Paddle collision
+                    const paddleWidth = activePowerups['expand'] ? 120 : 100;
+                    if (ballY > 350 && ballY < 370 && ballX > paddleX && ballX < paddleX + paddleWidth) {
+                        speedY = -Math.abs(speedY);
+                        const hitPos = (ballX - paddleX) / paddleWidth;
+                        const angle = (hitPos - 0.5) * 1;
+                        speedX = angle * 8;
+                        
+                        if (activePowerups['speedBoost']) {
+                            speedX *= 1.3;
+                            speedY *= 1.3;
+                        }
+                        
+                        score++;
+                        sounds.paddleHit();
+                        createParticles(ballX, ballY, "#00ffff", 8, 1.2);
+                        flashIntensity = 0.2;
+                        screenShake = 4;
+                        
+                        if (score % 5 === 0) { 
+                            speedX *= 1.02; 
+                            speedY *= 1.02; 
+                        }
+                    }
 
-                // Brick collision
-                if (!isRespawning) {
                     speedY = checkBrickCollision(ballX, ballY, speedX, speedY);
-                }
 
-                // Fall off screen
-                if (ballY > 400) {
-                    if (shieldActive) {
-                        shieldActive = false;
-                        ballY = 330;
-                    } else {
-                        lives--;
-                        sounds.lifeLost();
-                        ballX = 200;
-                        ballY = 50;
-                        respawnDelay = 120;
-                        isRespawning = true;
-                        if (lives === 0) {
-                            sounds.gameOver();
-                            alert("GAME OVER!\nFinal Score: " + score + "\nLevel Reached: " + level);
-                            location.reload();
+                    // Ball falls
+                    if (ballY > 400) {
+                        if (shieldActive) {
+                            shieldActive = false;
+                            resetBall();
+                            gameState = 'countdown';
+                            stateTimer = 120;
+                        } else {
+                            lives--;
+                            sounds.lifeLost();
+                            
+                            if (lives === 0) {
+                                sounds.gameOver();
+                                setTimeout(() => {
+                                    alert("GAME OVER!\nFinal Score: " + score + "\nLevel: " + level);
+                                    location.reload();
+                                }, 500);
+                                return;
+                            }
+                            resetBall();
+                            gameState = 'countdown';
+                            stateTimer = 120;
+                        }
+                    }
+
+                    // Update secondary balls
+                    for (let i = balls.length - 1; i >= 0; i--) {
+                        let ball = balls[i];
+                        ball.x += ball.vx * dt;
+                        ball.y += ball.vy * dt;
+
+                        if (ball.x < 10 || ball.x > 390) ball.vx = -ball.vx;
+                        if (ball.y < 10) ball.vy = -ball.vy;
+
+                        ball.vy = checkBrickCollision(ball.x, ball.y, ball.vx, ball.vy);
+
+                        if (ball.y > 400) balls.splice(i, 1);
+                    }
+
+                    // Power-ups
+                    powerUps = powerUps.filter(p => p.active);
+                    for (let powerUp of powerUps) {
+                        powerUp.update();
+                        if (powerUp.checkCollision(paddleX, paddleWidth)) {
+                            activatePowerUp(powerUp.type);
+                            powerUp.active = false;
                         }
                     }
                 }
 
-                // Update secondary balls
-                for (let i = balls.length - 1; i >= 0; i--) {
-                    let ball = balls[i];
-                    ball.x += ball.vx * dt;
-                    ball.y += ball.vy * dt;
-
-                    if (ball.x < 10 || ball.x > 390) ball.vx = -ball.vx;
-                    if (ball.y < 10) ball.vy = -ball.vy;
-
-                    ball.vy = checkBrickCollision(ball.x, ball.y, ball.vx, ball.vy);
-
-                    if (ball.y > 400) balls.splice(i, 1);
+                // Update powerup timers
+                for (let key in activePowerups) {
+                    activePowerups[key]--;
+                    if (activePowerups[key] <= 0) delete activePowerups[key];
                 }
 
-                // Update power-ups
-                powerUps = powerUps.filter(p => p.active);
-                for (let powerUp of powerUps) {
-                    powerUp.update();
-                    if (powerUp.checkCollision(paddleX)) {
-                        activatePowerUp(powerUp.type);
-                        powerUp.active = false;
-                    }
-                }
-
-                // Update particles
                 particles = particles.filter(p => p.life > 0);
                 particles.forEach(p => p.update());
 
@@ -809,21 +858,21 @@
                 ctx.save();
                 ctx.translate(shakeX, shakeY);
 
-                // Draw flash
+                // Flash effect
                 if (flashIntensity > 0) {
                     ctx.fillStyle = `rgba(255, 0, 255, ${flashIntensity * 0.3})`;
                     ctx.fillRect(0, 0, 400, 400);
                     flashIntensity -= 0.05;
                 }
 
-                // Draw bricks
+                // Draw game elements
                 for (let brick of bricks) brick.draw(ctx);
-
-                // Draw power-ups
                 for (let powerUp of powerUps) powerUp.draw(ctx);
 
-                // Draw paddle with shield
+                // Paddle
+                const paddleWidth = activePowerups['expand'] ? 120 : 100;
                 const paddleGradient = ctx.createLinearGradient(paddleX, 360, paddleX, 380);
+                
                 if (shieldActive) {
                     ctx.strokeStyle = '#00ff00';
                     ctx.lineWidth = 3;
@@ -840,7 +889,7 @@
                 ctx.lineWidth = 2;
                 ctx.strokeRect(paddleX, 360, paddleWidth, 20);
 
-                // Draw main ball
+                // Main ball
                 ctx.shadowColor = "#ff00ff";
                 ctx.shadowBlur = 20;
                 
@@ -864,46 +913,59 @@
                 ctx.arc(ballX - 3, ballY - 3, 3, 0, Math.PI * 2);
                 ctx.fill();
 
-                // Draw secondary balls
+                // Secondary balls
                 for (let ball of balls) {
                     ctx.fillStyle = "#ffff00";
+                    ctx.shadowColor = "#ffff00";
+                    ctx.shadowBlur = 15;
                     ctx.beginPath();
                     ctx.arc(ball.x, ball.y, 8, 0, Math.PI * 2);
                     ctx.fill();
+                    ctx.shadowColor = 'transparent';
                 }
 
                 ctx.shadowColor = "transparent";
                 ctx.shadowBlur = 0;
 
-                // Draw particles
                 particles.forEach(p => p.draw(ctx));
 
-                // Draw UI
+                // UI - Clean layout
                 ctx.fillStyle = "#ff00ff";
-                ctx.font = "bold 20px Arial";
+                ctx.font = "bold 18px Arial";
+                ctx.textAlign = "left";
                 ctx.shadowColor = "#ff00ff";
-                ctx.shadowBlur = 10;
-                ctx.fillText("Score: " + score, 10, 30);
-                ctx.fillText("Lives: " + lives, 300, 30);
-                ctx.fillText("Level: " + level, 175, 30);
+                ctx.shadowBlur = 8;
                 
+                // Top left stats
+                ctx.fillText("SCORE: " + score, 10, 25);
+                ctx.fillText("LEVEL: " + level, 10, 50);
+                ctx.fillText("LIVES: " + lives, 10, 75);
+
+                // Power-up display
+                ctx.font = "bold 11px Arial";
+                ctx.fillStyle = "#00ff88";
+                let displayY = 100;
+                
+                if (activePowerups['expand']) {
+                    const remaining = Math.ceil(activePowerups['expand'] / 60);
+                    ctx.fillText("⊡ PADDLE: " + remaining + "s", 10, displayY);
+                    displayY += 18;
+                }
                 if (slowMoActive > 0) {
-                    ctx.fillStyle = "#00ffff";
-                    ctx.fillText("SLOW-MO", 10, 50);
+                    const remaining = Math.ceil(slowMoActive / 60);
+                    ctx.fillText("⌛ SLOW-MO: " + remaining + "s", 10, displayY);
+                    displayY += 18;
                 }
+                if (activePowerups['speedBoost']) {
+                    const remaining = Math.ceil(activePowerups['speedBoost'] / 60);
+                    ctx.fillText("⚡ SPEED: " + remaining + "s", 10, displayY);
+                    displayY += 18;
+                }
+                if (balls.length > 0) {
+                    ctx.fillText("●● MULTI-BALL: " + balls.length, 10, displayY);
+                }
+
                 ctx.shadowColor = "transparent";
-
-                if (isRespawning) {
-                    ctx.fillStyle = "rgba(0, 0, 0, 0.5)";
-                    ctx.fillRect(0, 0, 400, 400);
-                    ctx.fillStyle = "#ff00ff";
-                    ctx.font = "bold 30px Arial";
-                    ctx.shadowColor = "#ff00ff";
-                    ctx.shadowBlur = 15;
-                    ctx.fillText("GET READY!", 120, 200);
-                    ctx.shadowColor = "transparent";
-                }
-
                 ctx.restore();
 
                 requestAnimationFrame(update);
