@@ -4,9 +4,11 @@
     <title>E-Arcade Portal</title>
     <style>
         body { background: #111; color: #ff00ff; text-align: center; font-family: monospace; }
-        canvas { border: 4px solid #00ffff; background: #000; cursor: none; }
-        button { padding: 15px 30px; font-size: 20px; cursor: pointer; background: #ff00ff; color: white; border: none; margin: 5px; }
-        #soundToggle { background: #00ff00; }
+        canvas { border: 4px solid #00ffff; background: #000; cursor: none; box-shadow: 0 0 20px #00ffff; }
+        button { padding: 15px 30px; font-size: 20px; cursor: pointer; background: #ff00ff; color: white; border: none; margin: 5px; border-radius: 5px; box-shadow: 0 0 10px #ff00ff; }
+        button:hover { box-shadow: 0 0 20px #ff00ff; }
+        #soundToggle { background: #00ff00; box-shadow: 0 0 10px #00ff00; }
+        #soundToggle:hover { box-shadow: 0 0 20px #00ff00; }
     </style>
 </head>
 <body>
@@ -110,16 +112,45 @@
             let level = 1;
             let respawnDelay = 0;
             let isRespawning = false;
+            let particles = [];
+            let flashIntensity = 0;
+
+            // Particle system
+            class Particle {
+                constructor(x, y, vx, vy, color) {
+                    this.x = x;
+                    this.y = y;
+                    this.vx = vx;
+                    this.vy = vy;
+                    this.color = color;
+                    this.life = 30;
+                }
+
+                update() {
+                    this.x += this.vx;
+                    this.y += this.vy;
+                    this.vy += 0.2; // gravity
+                    this.life--;
+                }
+
+                draw(ctx) {
+                    ctx.fillStyle = this.color;
+                    ctx.globalAlpha = this.life / 30;
+                    ctx.beginPath();
+                    ctx.arc(this.x, this.y, 3, 0, Math.PI * 2);
+                    ctx.fill();
+                    ctx.globalAlpha = 1;
+                }
+            }
 
             // Initialize bricks with level variations
             function initBricks() {
                 bricks = [];
-                const BRICK_ROWS = 3 + level; // More rows as level increases
-                const BRICK_WIDTH = level > 3 ? 60 : 70; // Smaller bricks on harder levels
+                const BRICK_ROWS = 3 + level;
+                const BRICK_WIDTH = level > 3 ? 60 : 70;
                 
                 for (let row = 0; row < BRICK_ROWS; row++) {
                     for (let col = 0; col < BRICK_COLS; col++) {
-                        // Skip some bricks on higher levels for variety
                         if (level > 2 && (row + col) % 3 === 0) continue;
                         
                         bricks.push({
@@ -127,7 +158,8 @@
                             y: row * (BRICK_HEIGHT + BRICK_PADDING) + BRICK_OFFSET_TOP,
                             width: BRICK_WIDTH,
                             height: BRICK_HEIGHT,
-                            active: true
+                            active: true,
+                            row: row
                         });
                     }
                 }
@@ -138,7 +170,22 @@
             canvas.addEventListener("mousemove", (e) => {
                 let rect = canvas.getBoundingClientRect();
                 paddleX = e.clientX - rect.left - 50;
+                paddleX = Math.max(0, Math.min(paddleX, 300));
             });
+
+            function createParticles(x, y, color, count = 8) {
+                for (let i = 0; i < count; i++) {
+                    const angle = (Math.PI * 2 * i) / count;
+                    const speed = 2 + Math.random() * 3;
+                    particles.push(new Particle(
+                        x,
+                        y,
+                        Math.cos(angle) * speed,
+                        Math.sin(angle) * speed,
+                        color
+                    ));
+                }
+            }
 
             function checkBrickCollision() {
                 for (let brick of bricks) {
@@ -147,9 +194,16 @@
                     if (ballX > brick.x && ballX < brick.x + brick.width &&
                         ballY > brick.y && ballY < brick.y + brick.height) {
                         brick.active = false;
+                        
+                        // Simple bounce
                         speedY = -speedY;
                         score += 10;
                         sounds.brickHit();
+                        
+                        // Create particles
+                        const colors = ["#00ff00", "#00ffff", "#ff00ff"];
+                        createParticles(ballX, ballY, colors[brick.row % 3], 12);
+                        flashIntensity = 0.3;
 
                         // Check if all bricks are cleared
                         if (bricks.every(b => !b.active)) {
@@ -159,7 +213,7 @@
                             initBricks();
                             ballX = 200;
                             ballY = 330;
-                            speedX = 4 * (1 + level * 0.1); // Increase base speed per level
+                            speedX = 4 * (1 + level * 0.1);
                             speedY = -4 * (1 + level * 0.1);
                             isRespawning = false;
                         }
@@ -183,20 +237,28 @@
                     ballX += speedX;
                     ballY += speedY;
                 } else {
-                    // Ball falls slowly during respawn
                     ballY += 1;
-                    ballX = 200; // Keep it centered above paddle
+                    ballX = 200;
                 }
 
                 // Wall collision
                 if (ballX < 10 || ballX > 390) speedX = -speedX;
                 if (ballY < 10) speedY = -speedY;
 
-                // Paddle collision
+                // Paddle collision with angle physics
                 if (ballY > 350 && ballY < 370 && ballX > paddleX && ballX < paddleX + 100) {
-                    speedY = -speedY;
+                    speedY = -Math.abs(speedY);
+                    
+                    // Angle based on where ball hits paddle
+                    const hitPos = (ballX - paddleX) / 100; // 0 to 1
+                    const angle = (hitPos - 0.5) * 1; // Range: -0.5 to 0.5
+                    speedX = angle * 8;
+                    
                     score++;
                     sounds.paddleHit();
+                    createParticles(ballX, ballY, "#00ffff", 6);
+                    flashIntensity = 0.2;
+                    
                     if (score % 5 === 0) { speedX *= 1.05; speedY *= 1.05; }
                 }
 
@@ -211,7 +273,7 @@
                     sounds.lifeLost();
                     ballX = 200;
                     ballY = 50;
-                    respawnDelay = 120; // 2 seconds at 60fps
+                    respawnDelay = 120;
                     isRespawning = true;
                     if (lives === 0) {
                         sounds.gameOver();
@@ -220,41 +282,109 @@
                     }
                 }
 
-                // Draw ball
-                ctx.fillStyle = "#ff00ff";
-                ctx.beginPath();
-                ctx.arc(ballX, ballY, 10, 0, Math.PI * 2);
-                ctx.fill();
+                // Update particles
+                particles = particles.filter(p => p.life > 0);
+                particles.forEach(p => p.update());
 
-                // Draw paddle
-                ctx.fillStyle = "#00ffff";
-                ctx.fillRect(paddleX, 360, 100, 20);
+                // Draw flash
+                if (flashIntensity > 0) {
+                    ctx.fillStyle = `rgba(255, 0, 255, ${flashIntensity * 0.3})`;
+                    ctx.fillRect(0, 0, 400, 400);
+                    flashIntensity -= 0.05;
+                }
 
-                // Draw bricks
+                // Draw bricks with gradients
                 for (let brick of bricks) {
                     if (brick.active) {
-                        ctx.fillStyle = "#00ff00";
+                        const gradient = ctx.createLinearGradient(brick.x, brick.y, brick.x, brick.y + brick.height);
+                        
+                        const colors = [
+                            ["#00ff00", "#00cc00"],
+                            ["#00ffff", "#00cccc"],
+                            ["#ff00ff", "#cc00cc"]
+                        ];
+                        const colorPair = colors[brick.row % 3];
+                        
+                        gradient.addColorStop(0, colorPair[0]);
+                        gradient.addColorStop(1, colorPair[1]);
+                        
+                        ctx.fillStyle = gradient;
                         ctx.fillRect(brick.x, brick.y, brick.width, brick.height);
-                        ctx.strokeStyle = "#00ffff";
-                        ctx.lineWidth = 2;
+                        
+                        ctx.strokeStyle = "#ffffff";
+                        ctx.lineWidth = 1;
                         ctx.strokeRect(brick.x, brick.y, brick.width, brick.height);
                     }
                 }
 
+                // Draw paddle with gradient
+                const paddleGradient = ctx.createLinearGradient(paddleX, 360, paddleX, 380);
+                paddleGradient.addColorStop(0, "#00ffff");
+                paddleGradient.addColorStop(1, "#0088ff");
+                ctx.fillStyle = paddleGradient;
+                ctx.fillRect(paddleX, 360, 100, 20);
+                ctx.shadowColor = "#00ffff";
+                ctx.shadowBlur = 15;
+                ctx.shadowOffsetX = 0;
+                ctx.shadowOffsetY = 0;
+                ctx.strokeStyle = "#ffffff";
+                ctx.lineWidth = 2;
+                ctx.strokeRect(paddleX, 360, 100, 20);
+
+                // Draw ball with glow
+                ctx.shadowColor = "#ff00ff";
+                ctx.shadowBlur = 20;
+                
+                // Outer glow
+                ctx.fillStyle = "rgba(255, 0, 255, 0.2)";
+                ctx.beginPath();
+                ctx.arc(ballX, ballY, 20, 0, Math.PI * 2);
+                ctx.fill();
+                
+                // Middle glow
+                ctx.fillStyle = "rgba(255, 0, 255, 0.4)";
+                ctx.beginPath();
+                ctx.arc(ballX, ballY, 15, 0, Math.PI * 2);
+                ctx.fill();
+                
+                // Core ball
+                ctx.fillStyle = "#ff00ff";
+                ctx.beginPath();
+                ctx.arc(ballX, ballY, 10, 0, Math.PI * 2);
+                ctx.fill();
+                
+                // Highlight
+                ctx.fillStyle = "#ffffff";
+                ctx.beginPath();
+                ctx.arc(ballX - 3, ballY - 3, 3, 0, Math.PI * 2);
+                ctx.fill();
+
+                ctx.shadowColor = "transparent";
+                ctx.shadowBlur = 0;
+
+                // Draw particles
+                particles.forEach(p => p.draw(ctx));
+
                 // Draw UI
-                ctx.fillStyle = "white";
-                ctx.font = "20px Arial";
+                ctx.fillStyle = "#ff00ff";
+                ctx.font = "bold 20px Arial";
+                ctx.shadowColor = "#ff00ff";
+                ctx.shadowBlur = 10;
                 ctx.fillText("Score: " + score, 10, 30);
                 ctx.fillText("Lives: " + lives, 300, 30);
                 ctx.fillText("Level: " + level, 175, 30);
+                ctx.shadowColor = "transparent";
 
                 // Draw respawn message
                 if (isRespawning) {
                     ctx.fillStyle = "rgba(0, 0, 0, 0.5)";
                     ctx.fillRect(0, 0, 400, 400);
                     ctx.fillStyle = "#ff00ff";
-                    ctx.font = "30px Arial";
+                    ctx.font = "bold 30px Arial";
+                    ctx.shadowColor = "#ff00ff";
+                    ctx.shadowBlur = 15;
                     ctx.fillText("GET READY!", 120, 200);
+                    ctx.shadowColor = "transparent";
                 }
 
                 requestAnimationFrame(update);
